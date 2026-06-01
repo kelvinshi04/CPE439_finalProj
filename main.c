@@ -19,19 +19,71 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "queue.h"
+#include "adc.h"
+#include "dac.h"
+#include "semphr.h"
+#include "lcd.h"
+
+typedef struct {
+		uint16_t min;
+		uint16_t max;
+		uint16_t avg;
+} metrics_t;
+
+typedef struct {
+		metrics_t data;
+		uint16_t dac_code;
+} shared_data_t;
 
 
 /* Private variables ---------------------------------------------------------*/
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+osThreadId_t adcSenseTaskHandle, metricsTaskHandle, dacOutputTaskHandle;
+osThreadId_t lcdDisplayTaskHandle, uartTerminalTaskHandle;
+QueueHandle_t adcQueue = NULL;
+QueueHandle_t gainQueue = NULL;
+QueueHandle_t metricsQueue = NULL;
+SemaphoreHandle_t updateLCD;
+SemaphoreHandle_t dataMutex;
+metrics_t curr_data;
+
+const osThreadAttr_t adcSenseTask_attributes = {
+  .name = "adcTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t dacOutputTask_attributes = {
+  .name = "dacTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t metricsTaskHandle_attributes = {
+  .name = "metricsTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t lcdDisplayTask_attributes = {
+  .name = "lcdTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t uartTerminalTask_attributes = {
+  .name = "uartTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void StartDefaultTask(void *argument);
+void adcSenseTask(void *argument);
+void metricTask(void *argument);
+void dacOutputTask(void *argument);
+void lcdDisplayTask(void *argument);
+void uartTerminalTask(void *argument);
 
 /**
   * @brief  The application entry point.
@@ -52,8 +104,24 @@ int main(void) {
   /* Init scheduler */
   osKernelInitialize();
 
+  updateLCD = xSemaphoreCreateBinary();
+  dataMutex = xSemaphoreCreateMutex();
+
+  metricsQueue = xQueueCreate(1, sizeof(metrics_t));
+  adcQueue = xQueueCreate(10, sizeof(uint16_t));
+  gainQueue = xQueueCreate(1, sizeof(uint8_t));
+  // if queues is bad, terminate the program
+  if (adcQueue == 0 || gainQueue == 0 || metricsQueue == 0){
+	  exit();
+  }
+
+
   /* Create the thread(s) */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  adcSenseTaskHandle = osThreadNew(adcSenseTask, NULL, &adcSenseTask_attributes);
+  metricsTaskHandle = osThreadNew(metricTask, NULL, &metricsTaskHandle_attributes);
+  dacOutputTaskHandle = osThreadNew(dacOutputTask, NULL, &dacOutputTask_attributes);
+  lcdDisplayTaskHandle = osThreadNew(lcdDisplayTask, NULL, &lcdDisplayTask_attributes);
+  uartTerminalTaskHandle = osThreadNew(uartTerminalTask, NULL, &uartTerminalTask_attributes);
 
   /* Start scheduler */
   osKernelStart();
@@ -63,6 +131,160 @@ int main(void) {
   while (1){
   }
 }
+
+
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+void adcSenseTask(void *argument){
+	TickType_t xLastWakeUpTime;
+	uint16_t adcData;
+
+	// Initial Last Wake Up Time
+	xLastWakeUpTime = xTaskGetTickCount();
+
+	/* Infinite loop */
+	for(;;){
+		vTaskDelayUntil(&xLastWakeUpTime, pdMS_TO_TICKS(10));
+		ADC_startConversion();
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		adcData = ADC_read();
+		xQueueSend(adcQueue, &adcData, (TickType_t) 0);
+  }
+}
+
+void metricTask(void *argument){
+	uint16_t samp[16];
+	uint16_t adcReading;
+	uint8_t index = 0;
+	uint16_t averg, curr;
+	uint16_t lower, upper;
+	uint32_t accum;
+	metrics_t metrics;
+
+	/* Infinite loop */
+	for(;;){
+		xQueueReceieve(adcQueue, &adcReading, portMAX_DELAY);
+		samp[index%16] = adcReading;
+
+		averg = 0;
+		accum = 0;
+		for (int i = 1; i < 16; i++){
+			curr = samp[i];
+			if (curr < lower){
+				lower = curr;
+			}
+			if (curr > upper){
+				upper = curr;
+			}
+			accum += curr;
+		}
+		averg = accum >> 4;
+
+		xQueueSend(metricsQueue, &metricsQueue, (TickType_t) 0);
+	}
+}
+
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+void dacOutputTask(void *argument){
+	uint16_t adcReading, scaledReading, dacCode;
+	uint8_t gain, newGain;
+	display_state_t displayState;
+
+	gain = 1;
+	/* Infinite loop */
+	for(;;){
+		xQueueReceieve(adcQueue, &adcReading, portMAX_DELAY);
+		if (xQueueReceive(gainQueue, &newGain, (TickType_t) 0) == pdTRUE){
+			gain = newGain;
+		}
+
+		switch (gain){
+			case 0:
+				scaledReading = adcReading >> 1;
+				break;
+
+			case 2:
+				scaledReading = adcReading << 1;
+				break;
+			default:
+				scaledReading = adcReading;
+		}
+		dacCode = DAC_volt_conv(scaledReading);
+		DAC_write(dacCode);
+
+		xSemaphoreTake(dataMutex, portMAX_DELAY);
+		display_state.adc_raw = adcReading;
+		display_state.adc_scaled = scaledReading;
+		display_state.dac_code = dacCode;
+		display_state.gain = gain;
+		xSemaphoreGive(dataMutex);
+
+		xSemaphoreGive(updateLCD);
+	}
+}
+
+
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+void lcdDisplayTask(void *argument){
+	display_state_t state;
+	/* Infinite loop */
+	for(;;){
+		xSemaphoreTake(updateLCD, portMAX_DELAY);
+
+		xSemaphoreTake(dataMutex, portMAX_DELAY);
+		state = display_state;
+		xSemaphoreGive(dataMutex);
+
+		LCD_write_string("GAIN: ", 6, 1);
+		if (display.gain == 0){
+			LCD_write_string("0.5x", 4, 1);
+		}
+		else if (display.gain == 1){
+			LCD_write_string("1x  ", 4, 1);
+		}
+		else{
+			LCD_write_string("2x  ", 4, 1);
+		}
+
+		LCD_write_string("ADC: ", 5, 2);
+
+
+  }
+}
+
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+void uartTerminalTask(void *argument){
+  /* Infinite loop */
+  for(;;){
+    osDelay(1);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 /**
   * @brief System Clock Configuration
@@ -109,18 +331,6 @@ void SystemClock_Config(void){
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
     Error_Handler();
-  }
-}
-
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-void StartDefaultTask(void *argument){
-  /* Infinite loop */
-  for(;;){
-    osDelay(1);
   }
 }
 

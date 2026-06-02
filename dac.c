@@ -28,13 +28,13 @@ uint16_t DAC_volt_conv(uint32_t voltage){
 }
 
 void DAC_write(uint16_t data){
-	GPIOA->BSRR = GPIO_PIN_2;
+	GPIOA->BSRR = GPIO_PIN_0;
 	uint16_t command = CONTROL_BITS;
 	command |= (data & 0x0FFF);
 	while (!(SPI1->SR & 0x02));
 	SPI1->DR = command;
-	while (SPI1->SR & SPI_SR_BSY);              // wait for transmission complete
-	DAC_update();                               // pulse CS to latch output
+	while (SPI1->SR & SPI_SR_BSY);      // wait for transmission complete
+	DAC_update();                   	// pulse CS to latch output
 }
 
 
@@ -105,7 +105,7 @@ void DAC_GPIO_setup(){
 }
 
 void DAC_update(){
-	GPIOA->BRR = GPIO_PIN_2;
+	GPIOA->BRR = GPIO_PIN_0;
 	for (int i = 0; i < 5; i++);
-	GPIOA->BSRR = GPIO_PIN_2;
+	GPIOA->BSRR = GPIO_PIN_0;
 }

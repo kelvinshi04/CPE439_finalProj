@@ -9,13 +9,12 @@
 #define INC_ADC_H_
 #endif /* INC_ADC_H_ */
 
-#include "stm32l4xx_hal.h"
 #include "cmsis_os.h"
+#include "stm32l4xx_hal.h"
 
 void ADC_init(void);
 void ADC_startConversion(void);
-void ADC1_2_IRQHandler(void);
 uint16_t ADC_read(void);
-
+void ADC1_2_IRQHandler(void);
 
 extern TaskHandle_t adcTask;

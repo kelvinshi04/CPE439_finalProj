@@ -12,7 +12,7 @@
 #include "stm32l4xx_hal.h"
 
 #define VOLTAGE_RAIL 3300
-#define CONTROL_BITS 0x3000
+#define CONTROL_BITS 0x1000
 
 void SPI_GPIO_setup(void);
 void SPI_init(void);

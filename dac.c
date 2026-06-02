@@ -22,18 +22,20 @@ uint16_t DAC_volt_conv(uint32_t voltage){
 		voltage = 0;
 	}
 
-	// convert to binary
-	float step = VOLTAGE_RAIL/(4095);
-	return (uint16_t) (voltage/step);
+//	// convert to binary
+//	float step = VOLTAGE_RAIL/(4095.);
+//	return (uint16_t) (voltage/step);
+	return (uint16_t)((voltage * 4095UL) / 4096UL);
 }
 
 void DAC_write(uint16_t data){
-	GPIOA->BSRR = GPIO_PIN_0;
+	GPIOA->BSRR = GPIO_PIN_2;
 	uint16_t command = CONTROL_BITS;
 	command |= (data & 0x0FFF);
 	while (!(SPI1->SR & 0x02));
 	SPI1->DR = command;
 	while (SPI1->SR & SPI_SR_BSY);      // wait for transmission complete
+	__NOP(); __NOP(); __NOP(); __NOP();
 	DAC_update();                   	// pulse CS to latch output
 }
 
@@ -51,7 +53,7 @@ void SPI_init( void ) {
    SPI1->CR1 &= ~( SPI_CR1_CPOL | SPI_CR1_CPHA ); // SCLK polarity:phase = 0:0
    SPI1->CR1 |=	 SPI_CR1_MSTR;              	// MCU is SPI controller
    SPI1->CR1 &= ~(SPI_CR1_BR);                    // clear baud rate bits
-   SPI1->CR1 |=  (1 << SPI_CR1_BR_Pos);           // PCLK/4 = 20 MHz @ 80 MHz
+   SPI1->CR1 |=  (2 << SPI_CR1_BR_Pos);           // PCLK/4 = 20 MHz @ 80 MHz
 
    // CR2 (reset value = 0x0700 : 8b data)
    SPI1->CR2 &= ~( SPI_CR2_TXEIE | SPI_CR2_RXNEIE ); // disable FIFO intrpts
@@ -92,20 +94,20 @@ void SPI_GPIO_setup(){
 }
 
 void DAC_GPIO_setup(){
-	GPIOA->MODER &= ~(GPIO_MODER_MODE0 | GPIO_MODER_MODE1);
-	GPIOA->MODER |= ((1 << 0) | (1 << 2));
+	GPIOA->MODER &= ~(GPIO_MODER_MODE2 | GPIO_MODER_MODE1);
+	GPIOA->MODER |= ((1 << 4) | (1 << 2));
 
-	GPIOA->OTYPER &= ~(GPIO_OTYPER_OT0 | GPIO_OTYPER_OT1);
+	GPIOA->OTYPER &= ~(GPIO_OTYPER_OT2 | GPIO_OTYPER_OT1);
 
-	GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1);
+	GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPD2 | GPIO_PUPDR_PUPD1);
 
-	GPIOA->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEED0_Pos | GPIO_OSPEEDR_OSPEED1_Pos);
-	GPIOA->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED0_Pos)
+	GPIOA->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEED2_Pos | GPIO_OSPEEDR_OSPEED1_Pos);
+	GPIOA->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED2_Pos)
 			| (3 << GPIO_OSPEEDR_OSPEED1_Pos));
 }
 
 void DAC_update(){
-	GPIOA->BRR = GPIO_PIN_0;
+	GPIOA->BRR = GPIO_PIN_2;
 	for (int i = 0; i < 5; i++);
-	GPIOA->BSRR = GPIO_PIN_0;
+	GPIOA->BSRR = GPIO_PIN_2;
 }

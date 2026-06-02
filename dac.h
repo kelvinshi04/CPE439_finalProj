@@ -17,7 +17,7 @@
 void SPI_GPIO_setup(void);
 void SPI_init(void);
 void DAC_init(void);
-uint16_t DAC_volt_conv(float voltage);
+uint16_t DAC_volt_conv(uint32_t voltage);
 void DAC_GPIO_setup(void);
 void DAC_update(void);
 void DAC_write(uint16_t data);

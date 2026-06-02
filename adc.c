@@ -39,6 +39,8 @@
 void ADC_init(void) {
    RCC->AHB2ENR |= RCC_AHB2ENR_ADCEN;              // enable ADC peripheral clock
 
+   DWT_Init();
+
    // power up & calibrate ADC
    ADC123_COMMON->CCR |= (3 << ADC_CCR_CKMODE_Pos); // HCLK/4 = 20 MHz, within 26 MHz spec
    ADC1->CR &= ~(ADC_CR_DEEPPWD);                   // disable deep-power-down mode
@@ -93,7 +95,7 @@ void ADC_startConversion(void) {
  * INs      : none
  * OUTs     : none
  * action   : fires on ADC end-of-conversion. clears EOC flag and sends a
- *            FreeRTOS task notification to xTask_ADC to unblock
+ *            FreeRTOS task notification to adcSenseTaskHandle to unblock
  *            ADC_Sensor_Task. calls portYIELD_FROM_ISR() to yield immediately
  *            if a higher priority task was woken.
  * authors  : Kelvin Shi - kshi04@calpoly.edu
@@ -105,8 +107,24 @@ void ADC1_2_IRQHandler(void) {
       ADC1->ISR |= ADC_ISR_EOC;                     // write 1 to clear EOC flag
 
       BaseType_t xHigherPriorityTaskWoken = pdFALSE;         // init yield flag
-      vTaskNotifyGiveFromISR(xTask_ADC,                       // notify ADC task
+      vTaskNotifyGiveFromISR(adcTask,                       // notify ADC task
                              &xHigherPriorityTaskWoken);
       portYIELD_FROM_ISR(xHigherPriorityTaskWoken);          // yield if needed
    }
+}
+
+
+/* -----------------------------------------------------------------------------
+
+    function : uint16_t ADC_read(void)
+    INs      : none
+    OUTs     : uint16 - the data sampled
+    action   : read the sampled data from ADC data register
+    authors  : Kelvin Shi - kshi04@calpoly.edu
+    version  : 2.0
+    date     : 2025/05/31
+    -------------------------------------------------------------------------- */
+
+uint16_t ADC_read(void){
+    return ADC1->DR;
 }

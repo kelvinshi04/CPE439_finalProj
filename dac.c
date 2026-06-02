@@ -10,7 +10,7 @@ void DAC_init(){
 	SPI_GPIO_setup();
 	DAC_GPIO_setup();
 	SPI_init();
-	GPIOA->BSRR = (GPIO_PIN_1 | GPIO_PIN_0); // no shutdown
+	GPIOA->BSRR = (GPIO_PIN_1 | GPIO_PIN_2); // no shutdown
 }
 
 uint16_t DAC_volt_conv(uint32_t voltage){
@@ -28,7 +28,7 @@ uint16_t DAC_volt_conv(uint32_t voltage){
 }
 
 void DAC_write(uint16_t data){
-	GPIOA->BSRR = GPIO_PIN_0;
+	GPIOA->BSRR = GPIO_PIN_2;
 	uint16_t command = CONTROL_BITS;
 	command |= (data & 0x0FFF);
 	while (!(SPI1->SR & 0x02));
@@ -105,7 +105,7 @@ void DAC_GPIO_setup(){
 }
 
 void DAC_update(){
-	GPIOA->BRR = GPIO_PIN_0;
+	GPIOA->BRR = GPIO_PIN_2;
 	for (int i = 0; i < 5; i++);
-	GPIOA->BSRR = GPIO_PIN_0;
+	GPIOA->BSRR = GPIO_PIN_2;
 }

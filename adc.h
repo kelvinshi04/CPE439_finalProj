@@ -17,4 +17,4 @@ void ADC_startConversion(void);
 uint16_t ADC_read(void);
 void ADC1_2_IRQHandler(void);
 
-extern TaskHandle_t adcTask;
+extern TaskHandle_t adcTaskHandle;

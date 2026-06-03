@@ -66,7 +66,7 @@ void ADC_init(void) {
    // configure & enable ADC interrupt
    ADC1->IER |= ADC_IER_EOCIE;                      // enable end-of-conversion interrupt
    ADC1->ISR |= ADC_ISR_EOC;                        // write 1 to clear EOC flag
-   NVIC->IP[ADC1_2_IRQn] = (5 << (8 - __NVIC_PRIO_BITS)); // priority 5, shifted into top bits
+   NVIC->IP[ADC1_2_IRQn] = (6 << (8 - __NVIC_PRIO_BITS)); // priority 5, shifted into top bits
    NVIC->ISER[0] = (1 << (ADC1_2_IRQn & 0x1F));    // enable ADC1_2 in NVIC
    __enable_irq();                                  // enable global interrupts
 
@@ -110,7 +110,7 @@ uint16_t ADC_read(void){
  * INs      : none
  * OUTs     : none
  * action   : fires on ADC end-of-conversion. clears EOC flag and sends a
- *            FreeRTOS task notification to xTask_ADC to unblock
+ *            FreeRTOS task notification to adcTaskHandle to unblock
  *            ADC_Sensor_Task. calls portYIELD_FROM_ISR() to yield immediately
  *            if a higher priority task was woken.
  * authors  : Kelvin Shi - kshi04@calpoly.edu
@@ -122,7 +122,7 @@ void ADC1_2_IRQHandler(void) {
       ADC1->ISR |= ADC_ISR_EOC;                     // write 1 to clear EOC flag
 
       BaseType_t xHigherPriorityTaskWoken = pdFALSE;         // init yield flag
-      vTaskNotifyGiveFromISR(adcTask,                        // notify ADC task
+      vTaskNotifyGiveFromISR(adcTaskHandle,                        // notify ADC task
                              &xHigherPriorityTaskWoken);
       portYIELD_FROM_ISR(xHigherPriorityTaskWoken);          // yield if needed
    }

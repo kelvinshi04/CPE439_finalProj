@@ -17,6 +17,7 @@
 **/
 
 #include "LPUART.h"
+extern void rxRingBufPush(char c);
 
 
 /* -----------------------------------------------------------------------------
@@ -58,6 +59,7 @@ void LPUART_init(){
 	LPUART1->CR1 |= USART_CR1_RXNEIE;        // enable LPUART1 recv interrupt
 	LPUART1->ISR &= ~(USART_ISR_RXNE);       // clear Recv-Not-Empty flag
 	LPUART1->BRR = 0x2B622;    // 115.2 kbps @ 80 MHz PCLK1
+	NVIC->IP[LPUART1_IRQn] = (5 << (8 - __NVIC_PRIO_BITS)); // priority 6
 	NVIC->ISER[2] = (1 << (LPUART1_IRQn & 0x1F));   // enable LPUART1 ISR
 	__enable_irq();                          // enable global interrupts
 }
@@ -76,7 +78,7 @@ void LPUART_init(){
 void LPUART1_IRQHandler( void  ) {
    uint8_t charRecv;
    if (LPUART1->ISR & USART_ISR_RXNE){
-
+	   rxRingBufPush((char)LPUART1->RDR);
    }
 }
 
